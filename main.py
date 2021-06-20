@@ -37,11 +37,11 @@ parser.add_argument('--dataset', default='cifar10', type=str,
                     choices=['cifar10', 'cifar100'], help='dataset name')
 parser.add_argument('--num-labeled', type=int, default=4000, help='number of labeled data')
 parser.add_argument("--expand-labels", action="store_true", help="expand labels to fit eval steps")
-parser.add_argument('--total-steps', default=300000, type=int, help='number of total steps to run')
-parser.add_argument('--eval-step', default=1000, type=int, help='number of eval steps to run')
+parser.add_argument('--total-steps', default=150000, type=int, help='number of total steps to run')
+parser.add_argument('--eval-step', default=100, type=int, help='number of eval steps to run')
 parser.add_argument('--start-step', default=0, type=int,
                     help='manual epoch number (useful on restarts)')
-parser.add_argument('--workers', default=0, type=int, help='number of workers')
+parser.add_argument('--workers', default=10, type=int, help='number of workers')
 parser.add_argument('--num-classes', default=7, type=int, help='number of classes')
 parser.add_argument('--perc-labeled', default=0.8, type=float, help='number of classes')
 
