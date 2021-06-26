@@ -129,10 +129,6 @@ def train_loop(args, labeled_loader, unlabeled_loader, test_loader,
     labeled_iter = iter(labeled_loader)
     unlabeled_iter = iter(unlabeled_loader)
 
-#     moving_dot_product = torch.empty(1).to(args.device)
-#     limit = 3.0**(0.5)  # 3 = 6 / (f_in + f_out)
-#     nn.init.uniform_(moving_dot_product, -limit, limit)
-
     for step in range(args.start_step, args.total_steps):
         if step % args.eval_step == 0:
             pbar = tqdm(range(args.eval_step), disable=args.local_rank not in [-1, 0])
@@ -503,13 +499,13 @@ def main():
         batch_size=args.batch_size,
         num_workers=args.workers,  # 线程
         drop_last=True)  # batch_size最后剩下的要不要
-    for step, (x, y) in enumerate(labeled_loader):
-        print(step, ", ", x.shape, ", ", y.shape)
-        break
-    print("check for train_labeled_list")
-    for img,target in train_labeled_list:
-        print(img.shape, ", ", target)
-        break
+    # for step, (x, y) in enumerate(labeled_loader):
+    #     print(step, ", ", x.shape, ", ", y.shape)
+    #     break
+    # print("check for train_labeled_list")
+    # for img,target in train_labeled_list:
+    #     print(img.shape, ", ", target)
+    #     break
 
     unlabeled_loader = DataLoader(
         train_unlabeled_list,
