@@ -26,6 +26,8 @@ from utils import (AverageMeter, accuracy, create_loss_fn,
 import os.path as osp
 from object.data_list import ImageList
 from object.transforms import image_test, image_train
+from networks import resnet
+from torchvision import models
 
 logger = logging.getLogger(__name__)
 # --name cifar10-4K.5 --expand-labels --dataset cifar10 --num-classes 10 --num-labeled 4000 --total-steps 300000 --eval-step 1000 --randaug 2 16 --batch-size 128 --teacher_lr 0.05 --student_lr 0.05 --weight-decay 5e-4 --ema 0.995 --nesterov --mu 7 --label-smoothing 0.15 --temperature 0.7 --threshold 0.6 --lambda-u 8 --warmup-steps 5000 --uda-steps 5000 --student-wait-steps 3000 --teacher-dropout 0.2 --student-dropout 0.2
@@ -161,6 +163,8 @@ def train_loop(args, labeled_loader, unlabeled_loader, test_loader,
                 unlabeled_epoch += 1
                 unlabeled_loader.sampler.set_epoch(unlabeled_epoch)
             unlabeled_iter = iter(unlabeled_loader)
+            # images_uw: weak augmentation
+            # images_us: strong augmentation
             (images_uw, images_us), _ = unlabeled_iter.next()
 
         data_time.update(time.time() - end)
@@ -179,16 +183,23 @@ def train_loop(args, labeled_loader, unlabeled_loader, test_loader,
 
             targets = targets.long()
             t_loss_l = criterion(t_logits_l, targets)
-
+            # soft_pseudo_label is the softmax of the output of the weak prediction(t_logits_uw)
+            # (UDA)
+            # weak -> soft_pseudo_label
             soft_pseudo_label = torch.softmax(t_logits_uw.detach() / args.temperature, dim=-1)
             max_probs, hard_pseudo_label = torch.max(soft_pseudo_label, dim=-1)
+            # mask is the prob[soft_pseudo_label] >= threshold
             mask = max_probs.ge(args.threshold).float()
+            # soft_pseudo_label is the output of the weak prediction(t_logits_uw)
+            # (UDA)
+            # (weak -> soft_pseudo_label) && (strong -> log_softmax) => final loss for teacher unlabeled
             t_loss_u = torch.mean(
                 -(soft_pseudo_label * torch.log_softmax(t_logits_us, dim=-1)).sum(dim=-1) * mask
             )
             weight_u = args.lambda_u * min(1., (step + 1) / args.uda_steps)
             t_loss_uda = t_loss_l + weight_u * t_loss_u
 
+            # Student Network directly use strong imgs
             s_images = torch.cat((images_l, images_us))
             s_logits = student_model(s_images)
             s_logits_l = s_logits[:batch_size]
@@ -196,6 +207,7 @@ def train_loop(args, labeled_loader, unlabeled_loader, test_loader,
             del s_logits
 
             s_loss_l_old = F.cross_entropy(s_logits_l.detach(), targets.type(torch.int64))
+            # hard_pseudo_label is the previous output of the Teacher Network
             s_loss = criterion(s_logits_us, hard_pseudo_label)
 
         s_scaler.scale(s_loss).backward()
@@ -347,7 +359,6 @@ def evaluate(args, test_loader, model, criterion):
 
         test_iter.close()
         return losses.avg, top1.avg, top5.avg
-
 
 def finetune(args, train_loader, test_loader, model, criterion):
     train_sampler = RandomSampler if args.local_rank == -1 else DistributedSampler
@@ -533,16 +544,19 @@ def main():
     if args.local_rank not in [-1, 0]:
         torch.distributed.barrier()
 
-    teacher_model = WideResNet(num_classes=args.num_classes,
-                               depth=depth,
-                               widen_factor=widen_factor,
-                               dropout=0,
-                               dense_dropout=args.teacher_dropout)
-    student_model = WideResNet(num_classes=args.num_classes,
-                               depth=depth,
-                               widen_factor=widen_factor,
-                               dropout=0,
-                               dense_dropout=args.student_dropout)
+    # teacher_model = WideResNet(num_classes=args.num_classes,
+    #                            depth=depth,
+    #                            widen_factor=widen_factor,
+    #                            dropout=0,
+    #                            dense_dropout=args.teacher_dropout)
+    # student_model = WideResNet(num_classes=args.num_classes,
+    #                            depth=depth,
+    #                            widen_factor=widen_factor,
+    #                            dropout=0,
+    #                            dense_dropout=args.student_dropout)
+
+    teacher_model = models.resnet50(pretrained=True).cuda()
+    student_model = models.resnet50(pretrained=True).cuda()
 
     if args.local_rank == 0:
         torch.distributed.barrier()
